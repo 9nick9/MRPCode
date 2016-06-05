@@ -283,10 +283,89 @@ namespace SocialMediaGatheringTool
 
 		static void LoadKlout(string connectionString, string kloutAPIKey)
 		{
+			//CompanyID, KloutID
+			Dictionary<int, string> kloutIDs;
+			Dictionary<int, string> twitterIDs;
 			using (SqlConnection connection = new SqlConnection(connectionString))
 			{
+				connection.Open();
+				//GetCompanies with twitter
+				twitterIDs = GetTwitterNames(connection);
 
+				//Load KloutIDs from DB
+				kloutIDs = GetKloutIDsStored(connection);
+
+				foreach (KeyValuePair<int, string> twitterID in twitterIDs)
+				{
+					if (!kloutIDs.ContainsKey(twitterID.Key))
+						kloutIDs.Add(twitterID.Key, PullKloutID(twitterID.Value, kloutAPIKey));
+				}
+
+				SqlCommand cmd = new SqlCommand();
+				cmd.Connection = connection;
+
+				string scoreColumn = $"KloutScore{DateTime.Now.ToString("MMMdd")}";
+
+				string addTodaysColumn = $"ALTER TABLE KloutScores ADD {scoreColumn} DECIMAL(16,14)";
+				cmd.CommandText = addTodaysColumn;
+				cmd.ExecuteNonQuery();
+
+				foreach(KeyValuePair<int, string> kvp in kloutIDs)
+				{
+					string score = GetKloutScore(kvp.Value, kloutAPIKey);
+					string setScore = $"UPDATE KloutScores SET {scoreColumn} = {score} WHERE CompanyID = {kvp.Key}";
+					cmd.CommandText = setScore;
+					cmd.ExecuteNonQuery();
+				}
 			}
+		}
+
+		static string GetKloutScore(string value, string kloutAPIKey)
+		{
+			throw new NotImplementedException();
+		}
+
+		static string PullKloutID(string value, string apiKey)
+		{
+			throw new NotImplementedException();
+		}
+
+		static Dictionary<int, string> GetKloutIDsStored(SqlConnection connection)
+		{
+			Dictionary<int, string> kloutIDs = new Dictionary<int, string>();
+
+			SqlCommand cmd = new SqlCommand();
+			cmd.Connection = connection;
+
+			string getStoredIDs = "SELECT CompanyID, KloutID FROM KloutScores WHERE KloutID <> '' AND KloutID IS NOT NULL";
+			cmd.CommandText = getStoredIDs;
+			SqlDataReader reader = cmd.ExecuteReader();
+
+			while (reader.Read())
+				kloutIDs.Add((int) reader["CompanyID"], (string) reader["KloutID"]);
+
+			reader.Close();
+
+			return kloutIDs;
+
+		}
+
+		static Dictionary<int, string> GetTwitterNames(SqlConnection connection)
+		{
+			Dictionary<int, string> twitterIDs = new Dictionary<int, string>();
+
+			SqlCommand cmd = new SqlCommand();
+			cmd.Connection = connection;
+
+			string getStoredIDs = "SELECT ID, Twitter FROM Company WHERE Twitter <> '' AND Twitter IS NOT NULL";
+			cmd.CommandText = getStoredIDs;
+			SqlDataReader reader = cmd.ExecuteReader();
+
+			while (reader.Read())
+				twitterIDs.Add((int) reader["ID"], (string) reader["Twitter"]);
+
+			reader.Close();
+			return twitterIDs;
 		}
 	}
 }
