@@ -25,10 +25,13 @@ namespace SocialMediaGatheringTool
 					LoadFortune500(args[1], args[2], int.Parse(args[3]));
 					break;
 				case "SearchForWebsites":
-					FindWebsites(args[1], args[2]);
+					FindWebsites(args[1], args[2], int.Parse(args[3]));
 					break;
-				case "LoadKred":
-					LoadKred(args[1]);
+				case "LoadKlout":
+					LoadKlout(args[1], args[2]);
+					break;
+				case "TestParsing":
+					TestParse(args[1]);
 					break;
 				default:
 					Console.Out.WriteLine("Please enter a proper command");
@@ -36,7 +39,14 @@ namespace SocialMediaGatheringTool
 			}			
 		}
 
-		static void FindWebsites(string connectionString, string accountKey)
+		static void TestParse(string url)
+		{
+			WebResult result = new WebResult();
+			result.Url = url;
+			string handle = ParseOutTwitterHandle(result);
+		}
+
+		static void FindWebsites(string connectionString, string accountKey, int findTwitter)
 		{
 			using (SqlConnection connection = new SqlConnection(connectionString))
 			{
@@ -58,12 +68,18 @@ namespace SocialMediaGatheringTool
 
 				reader.Close();
 
+				string column = "Website";
+				if (findTwitter == 1)
+					column = "Twitter";
+
 				foreach (KeyValuePair<string, int> kvp in nameIDDictionary)
 				{
-					string url = GetWebsiteFromBing(kvp.Key, container);
-					Console.Out.WriteLine($"The URL for {kvp.Key} is {url}");
+					string url = SearchBing(kvp.Key, container, findTwitter == 1);
+					Console.Out.WriteLine($"The value for {kvp.Key} is {url}");
+					if (url.Length > 150)
+						continue;
 
-					string updateWebsiteSQL = $"UPDATE Company SET Website = '{url}' Where ID = {kvp.Value}";
+					string updateWebsiteSQL = $"UPDATE Company SET {column} = '{url}' Where ID = {kvp.Value}";
 					cmd.CommandText = updateWebsiteSQL;
 
 					cmd.ExecuteNonQuery();
@@ -71,15 +87,38 @@ namespace SocialMediaGatheringTool
 			}
 		}
 
-		static string GetWebsiteFromBing(string company, BingSearchContainer bingSearch)
+		static string SearchBing(string company, BingSearchContainer bingSearch, bool needTwitter = false)
 		{
+			if (needTwitter)
+				company = "twitter: " + company;
+
 			DataServiceQuery<WebResult> result = bingSearch.Web(company, "DisableLocationDetection", null, "en-US", null, null, null, null);
 			WebResult firstResult = result.FirstOrDefault();
+
+			if (needTwitter)
+				return ParseOutTwitterHandle(firstResult);
 
 			if (firstResult != null)
 				return firstResult.Url;
 
 			return "";
+		}
+
+		static string ParseOutTwitterHandle(WebResult firstResult)
+		{
+			if (firstResult == null)
+				return "";
+
+			string url = firstResult.Url;
+			int handleStart = url.IndexOf("://twitter.com/") + "://twitter.com/".Length;
+			if (handleStart < "://twitter.com/".Length)
+				return url;
+
+			string handle = url.Substring(handleStart);
+			if (handle.Contains("/") || handle.Contains("."))
+				return handle + "**Problem**";
+			else
+				return handle;
 		}
 
 		static void LoadFortune500(string connectionString, string fileLocation, int resetDB = 0)
@@ -242,7 +281,7 @@ namespace SocialMediaGatheringTool
 			return "";
 		}
 
-		static void LoadKred(string connectionString)
+		static void LoadKlout(string connectionString, string kloutAPIKey)
 		{
 			using (SqlConnection connection = new SqlConnection(connectionString))
 			{
