@@ -11,11 +11,14 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 
 namespace SocialMediaGatheringTool
 {
 	class Program
 	{
+		const string kloutBaseAddress = "http://api.klout.com/v2/";
+		const string stockQuoteAddress = "http://dev.markitondemand.com/MODApis/Api/v2/Quote?symbol={0}";
 
 		static void Main(string[] args)
 		{
@@ -33,10 +36,67 @@ namespace SocialMediaGatheringTool
 				case "TestParsing":
 					TestParse(args[1]);
 					break;
+				case "LoadStockData":
+					LoadStockData(args[1]);
+					break;
 				default:
 					Console.Out.WriteLine("Please enter a proper command");
 					return;
 			}			
+		}
+
+		static void LoadStockData(string connectionString)
+		{
+			using (SqlConnection connection = new SqlConnection(connectionString))
+			{
+				connection.Open();
+				SqlCommand cmd = new SqlCommand();
+				cmd.Connection = connection;
+
+				//Get stock prices from today not yet added
+				string getSymbols = "SELECT ID, StockTicker FROM Company c Left Join (select * from StockPrice where DateOfPrice = CONVERT(date, getdate())) s on c.ID = s.CompanyID Where StockTicker <> '' and StockTicker is not null and Price is null";
+				cmd.CommandText = getSymbols;
+				SqlDataReader reader = cmd.ExecuteReader();
+				Dictionary<int, string> tickerDictionary = new Dictionary<int, string>();
+
+				while (reader.Read())
+					tickerDictionary.Add((int) reader["ID"], (string) reader["StockTicker"]);
+
+				reader.Close();
+				
+				foreach(KeyValuePair<int, string> kvp in tickerDictionary)
+				{
+					string getStockData = string.Format(stockQuoteAddress, kvp.Value);
+					Stream dataStream;
+					try
+					{
+						WebRequest request = WebRequest.Create(getStockData);
+
+						WebResponse response = request.GetResponse();
+						dataStream = response.GetResponseStream();
+					}
+					catch
+					{
+						Thread.Sleep(1000);
+						continue;
+					}
+
+					XmlDocument xml = new XmlDocument();
+					xml.Load(dataStream);
+					XmlNode price = xml.GetElementsByTagName("LastPrice")[0];
+					if (price == null)
+						continue;
+
+					double lastPrice = double.Parse(price.InnerText);
+
+					string insertStockPrice = $"INSERT INTO StockPrice VALUES({kvp.Key}, {lastPrice}, '{DateTime.Now.ToString("yyyy-MM-dd")}')";
+					cmd.CommandText = insertStockPrice;
+					cmd.ExecuteNonQuery();
+
+					Console.Out.WriteLine($"Inserted Stock data for {kvp.Value}");
+					Thread.Sleep(1000);
+				}
+			}
 		}
 
 		static void TestParse(string url)
@@ -327,6 +387,9 @@ namespace SocialMediaGatheringTool
 
 		static string PullKloutID(string value, string apiKey)
 		{
+			//WebRequest request = new HttpWebRequest();
+
+
 			throw new NotImplementedException();
 		}
 
