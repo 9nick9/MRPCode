@@ -354,15 +354,27 @@ namespace SocialMediaGatheringTool
 
 				//Load KloutIDs from DB
 				kloutIDs = GetKloutIDsStored(connection);
+				SqlCommand cmd = new SqlCommand();
+				cmd.Connection = connection;
 
 				foreach (KeyValuePair<int, string> twitterID in twitterIDs)
 				{
 					if (!kloutIDs.ContainsKey(twitterID.Key))
-						kloutIDs.Add(twitterID.Key, PullKloutID(twitterID.Value, kloutAPIKey));
-				}
+					{
+						string kloutID = PullKloutID(twitterID.Value, kloutAPIKey);
+						if (kloutID == string.Empty)
+							continue;
 
-				SqlCommand cmd = new SqlCommand();
-				cmd.Connection = connection;
+						kloutIDs.Add(twitterID.Key, kloutID);
+						string insertKloutData = $"Insert into KloutScores(CompanyID, KloutID) Values ({twitterID.Key}, {kloutID})";
+
+						Console.Out.WriteLine($"The Klout ID for {twitterID} is {kloutID}");
+
+						cmd.CommandText = insertKloutData;
+						cmd.ExecuteNonQuery();
+						Thread.Sleep(150);
+					}
+				}
 
 				string scoreColumn = $"KloutScore{DateTime.Now.ToString("MMMdd")}";
 
@@ -374,23 +386,61 @@ namespace SocialMediaGatheringTool
 				{
 					string score = GetKloutScore(kvp.Value, kloutAPIKey);
 					string setScore = $"UPDATE KloutScores SET {scoreColumn} = {score} WHERE CompanyID = {kvp.Key}";
+
+					Console.Out.WriteLine($"The Klout score for Company {kvp.Key} is {score}");
+
 					cmd.CommandText = setScore;
 					cmd.ExecuteNonQuery();
+					Thread.Sleep(150);
 				}
 			}
 		}
 
-		static string GetKloutScore(string value, string kloutAPIKey)
+		static string GetKloutScore(string kloutID, string kloutAPIKey)
 		{
-			throw new NotImplementedException();
+			string kloutScore = kloutBaseAddress + $"user.json/{kloutID}/score?key={kloutAPIKey}";
+
+			WebRequest request = WebRequest.Create(kloutScore);
+
+			WebResponse response = request.GetResponse();
+			Stream dataStream = response.GetResponseStream();
+			StreamReader sr = new StreamReader(dataStream);
+
+			string responseJson = sr.ReadToEnd();
+			var jsonResult = JsonConvert.DeserializeObject(responseJson);
+			JObject jsonObject = jsonResult as JObject;
+			if (jsonObject == null)
+				throw new ArgumentException();
+
+			return jsonObject["score"].Value<string>();
 		}
 
-		static string PullKloutID(string value, string apiKey)
+		static string PullKloutID(string twitterID, string apiKey)
 		{
-			//WebRequest request = new HttpWebRequest();
+			string kloutIdentification = kloutBaseAddress + $"identity.json/twitter?screenName={twitterID}&key={apiKey}";
+			WebRequest request = WebRequest.Create(kloutIdentification);
 
+			WebResponse response;
+			try
+			{
+				response = request.GetResponse();
+			}
+			catch(Exception)
+			{
+				Console.Out.Write($"Could not find ID for {twitterID}");
+				return string.Empty;
+			}
 
-			throw new NotImplementedException();
+			Stream dataStream = response.GetResponseStream();
+			StreamReader sr = new StreamReader(dataStream);
+
+			string responseJson = sr.ReadToEnd();
+			var jsonResult = JsonConvert.DeserializeObject(responseJson);
+			JObject jsonObject = jsonResult as JObject;
+			if (jsonObject == null)
+				throw new ArgumentException();
+
+			return jsonObject["id"].Value<string>();
 		}
 
 		static Dictionary<int, string> GetKloutIDsStored(SqlConnection connection)
