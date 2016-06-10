@@ -39,14 +39,44 @@ namespace SocialMediaGatheringTool
 				case "LoadStockData":
 					LoadStockData(args[1]);
 					break;
+				case "LoadTwitterData":
+					LoadTwitterData(args[1], args[2], args[3]);
+					break;
+				case "LoadDaily":
+					LoadDailyData(args[1], args[2], args[3], args[4]);
+					break;
 				default:
 					Console.Out.WriteLine("Please enter a proper command");
 					return;
 			}			
 		}
 
-		static void LoadStockData(string connectionString)
+		static void LoadDailyData(string connectionString, string kloutApiKey, string twitterApiKey, string twitterApiSecret)
 		{
+			LoadKlout(connectionString, kloutApiKey);
+
+			LoadTwitterData(connectionString, twitterApiKey, twitterApiSecret);
+
+			int countLoaded = 0;
+			int countExpected = 890;
+			while (countLoaded < countExpected)
+			{
+				int countAtStart = countLoaded;
+				countLoaded += LoadStockData(connectionString);
+				if (countLoaded == countAtStart)
+					break;
+			}
+			
+		}
+
+		static void LoadTwitterData(string connectionString, string apiKey, string apiSecret)
+		{
+			throw new NotImplementedException();
+		}
+
+		static int LoadStockData(string connectionString)
+		{
+			int countLoaded = 0;
 			using (SqlConnection connection = new SqlConnection(connectionString))
 			{
 				connection.Open();
@@ -63,7 +93,7 @@ namespace SocialMediaGatheringTool
 					tickerDictionary.Add((int) reader["ID"], (string) reader["StockTicker"]);
 
 				reader.Close();
-				
+
 				foreach(KeyValuePair<int, string> kvp in tickerDictionary)
 				{
 					string getStockData = string.Format(stockQuoteAddress, kvp.Value);
@@ -92,11 +122,12 @@ namespace SocialMediaGatheringTool
 					string insertStockPrice = $"INSERT INTO StockPrice VALUES({kvp.Key}, {lastPrice}, '{DateTime.Now.ToString("yyyy-MM-dd")}')";
 					cmd.CommandText = insertStockPrice;
 					cmd.ExecuteNonQuery();
-
+					countLoaded++;
 					Console.Out.WriteLine($"Inserted Stock data for {kvp.Value}");
-					Thread.Sleep(1000);
+					Thread.Sleep(1500);
 				}
 			}
+			return countLoaded;
 		}
 
 		static void TestParse(string url)
