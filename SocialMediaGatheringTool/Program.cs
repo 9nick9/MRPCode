@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
+using Twitterizer;
 
 namespace SocialMediaGatheringTool
 {
@@ -40,22 +41,22 @@ namespace SocialMediaGatheringTool
 					LoadStockData(args[1]);
 					break;
 				case "LoadTwitterData":
-					LoadTwitterData(args[1], args[2], args[3]);
+					LoadTwitterData(args[1], args[2], args[3], args[4], args[5]);
 					break;
 				case "LoadDaily":
-					LoadDailyData(args[1], args[2], args[3], args[4]);
+					LoadDailyData(args[1], args[2], args[3], args[4], args[5], args[6]);
 					break;
 				default:
 					Console.Out.WriteLine("Please enter a proper command");
 					return;
-			}			
+			}
 		}
 
-		static void LoadDailyData(string connectionString, string kloutApiKey, string twitterApiKey, string twitterApiSecret)
+		static void LoadDailyData(string connectionString, string kloutApiKey, string consumerKey, string consumerSecret, string accessToken, string accessTokenSecret)
 		{
 			LoadKlout(connectionString, kloutApiKey);
 
-			LoadTwitterData(connectionString, twitterApiKey, twitterApiSecret);
+			LoadTwitterData(connectionString, consumerKey, consumerSecret, accessToken, accessTokenSecret);
 
 			int countLoaded = 0;
 			int countExpected = 890;
@@ -66,12 +67,75 @@ namespace SocialMediaGatheringTool
 				if (countLoaded == countAtStart)
 					break;
 			}
-			
+
 		}
 
-		static void LoadTwitterData(string connectionString, string apiKey, string apiSecret)
+		static void LoadTwitterData(string connectionString, string consumerKey, string consumerSecret, string accessToken, string accessTokenSecret)
 		{
-			throw new NotImplementedException();
+			OAuthTokens tokens = new OAuthTokens();
+			tokens.ConsumerKey = consumerKey;
+			tokens.ConsumerSecret = consumerSecret;
+			tokens.AccessToken = accessToken;
+			tokens.AccessTokenSecret = accessTokenSecret;
+
+			using (SqlConnection connection = new SqlConnection(connectionString))
+			{
+				connection.Open();
+				SqlCommand cmd = new SqlCommand();
+				cmd.Connection = connection;
+
+				string getTwitterNames = "SELECT ID, Twitter FROM Company where Twitter <> '' and Twitter is not null";
+
+				cmd.CommandText = getTwitterNames;
+				SqlDataReader reader = cmd.ExecuteReader();
+				Dictionary<int, string> twitterIDs = new Dictionary<int, string>();
+
+				while (reader.Read())
+					twitterIDs.Add((int) reader["ID"], (string) reader["Twitter"]);
+
+				reader.Close();
+
+				foreach(KeyValuePair<int, string> kvp in twitterIDs)
+				{
+					TwitterUser user = GetTwitterUser(tokens, kvp.Value);
+					if(user == null)
+					{
+						Thread.Sleep(5000);
+						Console.Out.WriteLine($"Skipped {kvp.Value}");
+						continue;
+					}
+
+					string numFollow = string.Empty;
+					if (user.NumberOfFollowers == null)
+						numFollow = "NULL";
+					else
+						numFollow = user.NumberOfFollowers.ToString();
+
+					//(CompanyID int, NumFollowers bigint, NumFavorites bigint, NumFriends bigInt, NumStatuses bigint, DateCollected Date)
+					string insertTwitterData = $"INSERT INTO TwitterData VALUES ({kvp.Key}, {numFollow},{user.NumberOfFavorites},{user.NumberOfFriends},{user.NumberOfStatuses}, '{DateTime.Now.ToString("yyyy-MM-dd")}')";
+					cmd.CommandText = insertTwitterData;
+					cmd.ExecuteNonQuery();
+
+					Console.Out.WriteLine($"Twitter Data added for {kvp.Value}");
+					Thread.Sleep(5000);
+
+					//while (LimitExceeded(tokens))
+					//	Thread.Sleep(60000);
+
+				}
+
+			}
+
+		}
+
+		static bool LimitExceeded(OAuthTokens tokens)
+		{
+			TwitterResponse<TwitterRateLimitStatus> response = TwitterRateLimitStatus.GetStatus(tokens);
+
+			if(response.RateLimiting.Remaining == 0)
+				Console.Out.WriteLine($"Twitter rate limit hit. Will resume pulling @ {response.RateLimiting.ResetDate.ToString("hh:mm:ss")}");
+
+			return response.RateLimiting.Remaining == 0;
 		}
 
 		static int LoadStockData(string connectionString)
@@ -94,7 +158,7 @@ namespace SocialMediaGatheringTool
 
 				reader.Close();
 
-				foreach(KeyValuePair<int, string> kvp in tickerDictionary)
+				foreach (KeyValuePair<int, string> kvp in tickerDictionary)
 				{
 					string getStockData = string.Format(stockQuoteAddress, kvp.Value);
 					Stream dataStream;
@@ -247,7 +311,7 @@ namespace SocialMediaGatheringTool
 					JToken stats = company.Value<JToken>("sort");
 					int profits = 0;
 					JValue prof = stats.Value<JValue>("profits");
-					if(prof.Type == JTokenType.Integer)
+					if (prof.Type == JTokenType.Integer)
 						profits = stats.Value<int>("profits");
 
 					int assests = stats.Value<int>("assets");
@@ -293,7 +357,7 @@ namespace SocialMediaGatheringTool
 
 						//Get website info
 						//string website = GetWebsite(fortuneProfileLink); 
-						
+
 						////insert website
 						//string insertWebsite = $"UPDATE Company SET Website = '{website}' Where ID = {companyID}";
 						//cmd.CommandText = insertWebsite;
@@ -310,7 +374,7 @@ namespace SocialMediaGatheringTool
 						transaction.Rollback();
 						Console.Out.Write($"There was an error with {name}. Error Message: {e.Message}");
 						break;
-					}					
+					}
 				}
 				connection.Close();
 			}
@@ -359,14 +423,14 @@ namespace SocialMediaGatheringTool
 					return websiteLine.Substring(stringStart, stringEnd - stringStart);
 				}
 			}
-			catch(WebException)
+			catch (WebException)
 			{
 				//if (retryCount > 0)
 				//	return GetWebsite(fortuneProfileLink, --retryCount);
 				//else
 				//{
-					Console.Out.WriteLine($"The link {fortuneProfileLink} has timed out.");
-					return "";
+				Console.Out.WriteLine($"The link {fortuneProfileLink} has timed out.");
+				return "";
 				//}
 			}
 			return "";
@@ -413,7 +477,7 @@ namespace SocialMediaGatheringTool
 				cmd.CommandText = addTodaysColumn;
 				cmd.ExecuteNonQuery();
 
-				foreach(KeyValuePair<int, string> kvp in kloutIDs)
+				foreach (KeyValuePair<int, string> kvp in kloutIDs)
 				{
 					string score = GetKloutScore(kvp.Value, kloutAPIKey);
 					string setScore = $"UPDATE KloutScores SET {scoreColumn} = {score} WHERE CompanyID = {kvp.Key}";
@@ -456,7 +520,7 @@ namespace SocialMediaGatheringTool
 			{
 				response = request.GetResponse();
 			}
-			catch(Exception)
+			catch (Exception)
 			{
 				Console.Out.Write($"Could not find ID for {twitterID}");
 				return string.Empty;
@@ -472,6 +536,12 @@ namespace SocialMediaGatheringTool
 				throw new ArgumentException();
 
 			return jsonObject["id"].Value<string>();
+		}
+
+		static TwitterUser GetTwitterUser(OAuthTokens tokens, string screenName)
+		{
+			TwitterResponse<TwitterUser> user = TwitterUser.Show(tokens, screenName);
+			return user.ResponseObject;
 		}
 
 		static Dictionary<int, string> GetKloutIDsStored(SqlConnection connection)
