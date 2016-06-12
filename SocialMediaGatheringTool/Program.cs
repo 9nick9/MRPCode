@@ -54,18 +54,36 @@ namespace SocialMediaGatheringTool
 
 		static void LoadDailyData(string connectionString, string kloutApiKey, string consumerKey, string consumerSecret, string accessToken, string accessTokenSecret)
 		{
-			LoadKlout(connectionString, kloutApiKey);
-
-			LoadTwitterData(connectionString, consumerKey, consumerSecret, accessToken, accessTokenSecret);
-
-			int countLoaded = 0;
-			int countExpected = 890;
-			while (countLoaded < countExpected)
+			int step = 0;
+			try
 			{
-				int countAtStart = countLoaded;
-				countLoaded += LoadStockData(connectionString);
-				if (countLoaded == countAtStart)
-					break;
+				LoadKlout(connectionString, kloutApiKey);
+				step++;
+
+				LoadTwitterData(connectionString, consumerKey, consumerSecret, accessToken, accessTokenSecret);
+				step++;
+
+				int countLoaded = 0;
+				int countExpected = 890;
+				while (countLoaded < countExpected)
+				{
+					int countAtStart = countLoaded;
+					countLoaded += LoadStockData(connectionString);
+					if (countLoaded == countAtStart)
+						break;
+				}
+			}
+			catch(Exception e)
+			{
+				StreamWriter sw = new StreamWriter(Directory.GetCurrentDirectory() + DateTime.Now.ToString("yyyyMMdd") + ".log");
+				sw.WriteLine($"The Process failed at step {step}");
+				sw.WriteLine($"The error is:{e.Message}.");
+				sw.WriteLine();
+				sw.WriteLine("The stack trace is:");
+				sw.Write(e.StackTrace);
+				sw.Close();
+
+				throw;
 			}
 
 		}
