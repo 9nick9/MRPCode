@@ -100,28 +100,32 @@ namespace SocialMediaGatheringTool
 
 			for (int i = 1; i < 6; i++)
 			{
-				RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionTypes.Full);
-				RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionTypes.Delta);
-				RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionTypes.PercentChanged);
+				RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionType.Full);
+
+				if (i != 1)
+				{
+					RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionType.Delta);
+					RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionType.PercentChanged);
+				}
 			}
 		}
 
-		static void RegressAtLag(CompanyObservations compObs, int lag, SqlCommand cmd, CompanyObservations.RegressionTypes type)
+		static void RegressAtLag(CompanyObservations compObs, int lag, SqlCommand cmd, CompanyObservations.RegressionType type)
 		{
-			DoubleVector prices = compObs.GetPrices(compObs.Length-lag);
-			DoubleVector laggedPrices = compObs.GetPrices(compObs.Length - lag, lag);
+			DoubleVector prices = compObs.GetPrices(type, compObs.Length-lag, 1);
+			DoubleVector laggedPrices = compObs.GetPrices(type, compObs.Length - lag, lag);
 
 			//Regress price & priceLag
 			LinearRegression priceRegression = new LinearRegression(new DoubleMatrix(laggedPrices), prices);
 			LinearRegressionAnova priceAnova = new LinearRegressionAnova(priceRegression);
 
-			DoubleMatrix companyGen = compObs.GetCompanyGenerated(lag);
+			DoubleMatrix companyGen = compObs.GetCompanyGenerated(type, lag);
 
 			//Regress Price and compLag
 			LinearRegression companyRegression = new LinearRegression(companyGen, prices);
 			LinearRegressionAnova companyAnova = new LinearRegressionAnova(companyRegression);
 
-			DoubleMatrix customerGen = compObs.GetCustomerGenerated(lag);
+			DoubleMatrix customerGen = compObs.GetCustomerGenerated(type, lag);
 
 			//Regress Price and cust lag
 			LinearRegression customerRegression = new LinearRegression(customerGen, prices);
@@ -131,7 +135,7 @@ namespace SocialMediaGatheringTool
 			double companyExplain = Double.IsInfinity(companyAnova.AdjustedRsquared) ? 0 : companyAnova.AdjustedRsquared;
 			double customerExplain = Double.IsInfinity(customerAnova.AdjustedRsquared) ? 0 : customerAnova.AdjustedRsquared;
 
-			cmd.CommandText = $"Insert INTO RegressionResults VALUES ({compObs.CompanyID}, {lag}, {priceExplain}, {customerExplain}, {companyExplain})";
+			cmd.CommandText = $"Insert INTO RegressionResults VALUES ({compObs.CompanyID}, {lag}, {priceExplain}, {customerExplain}, {companyExplain}, {(int) type})";
 			cmd.ExecuteNonQuery();
 		}
 
