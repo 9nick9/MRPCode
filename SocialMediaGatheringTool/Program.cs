@@ -66,7 +66,7 @@ namespace SocialMediaGatheringTool
 				SqlCommand cmd = new SqlCommand();
 				cmd.Connection = connection;
 
-				string getAllData = $"select CompanyID, KloutScore, NumFavorites, NumFriends, NumStatuses, NumFollowers, Price from DataWithLags where CompanyID = 2 order by CompanyID, DateCollected";
+				string getAllData = $"select CompanyID, KloutScore, NumFavorites, NumFriends, NumStatuses, NumFollowers, Price from DataWithLags order by CompanyID, DateCollected";
 
 				cmd.CommandText = getAllData;
 				SqlDataReader reader = cmd.ExecuteReader();
@@ -85,18 +85,28 @@ namespace SocialMediaGatheringTool
 				}
 				reader.Close();
 
-				foreach(KeyValuePair<int, CompanyObservations> kvp in allObservations)
+				foreach (KeyValuePair<int, CompanyObservations> kvp in allObservations)
+				{
+					Console.Out.WriteLine($"Regressing {kvp.Key}");
 					PerformRegressions(kvp.Value, cmd);
+				}
 			}
 		}
 
 		static void PerformRegressions(CompanyObservations compObs, SqlCommand cmd)
 		{
+			if (compObs.Length < 10)
+				return;
+
 			for (int i = 1; i < 6; i++)
-				RegressAtLag(compObs, i, cmd);
+			{
+				RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionTypes.Full);
+				RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionTypes.Delta);
+				RegressAtLag(compObs, i, cmd, CompanyObservations.RegressionTypes.PercentChanged);
+			}
 		}
 
-		static void RegressAtLag(CompanyObservations compObs, int lag, SqlCommand cmd)
+		static void RegressAtLag(CompanyObservations compObs, int lag, SqlCommand cmd, CompanyObservations.RegressionTypes type)
 		{
 			DoubleVector prices = compObs.GetPrices(compObs.Length-lag);
 			DoubleVector laggedPrices = compObs.GetPrices(compObs.Length - lag, lag);
@@ -117,7 +127,11 @@ namespace SocialMediaGatheringTool
 			LinearRegression customerRegression = new LinearRegression(customerGen, prices);
 			LinearRegressionAnova customerAnova = new LinearRegressionAnova(customerRegression);
 
-			cmd.CommandText = $"Insert INTO RegressionResults VALUES ({compObs.CompanyID}, {lag}, {priceAnova.AdjustedRsquared}, {customerAnova.AdjustedRsquared}, {companyAnova.AdjustedRsquared})";
+			double priceExplain = Double.IsInfinity(priceAnova.AdjustedRsquared) ? 0 : priceAnova.AdjustedRsquared;
+			double companyExplain = Double.IsInfinity(companyAnova.AdjustedRsquared) ? 0 : companyAnova.AdjustedRsquared;
+			double customerExplain = Double.IsInfinity(customerAnova.AdjustedRsquared) ? 0 : customerAnova.AdjustedRsquared;
+
+			cmd.CommandText = $"Insert INTO RegressionResults VALUES ({compObs.CompanyID}, {lag}, {priceExplain}, {customerExplain}, {companyExplain})";
 			cmd.ExecuteNonQuery();
 		}
 

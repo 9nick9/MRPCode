@@ -9,6 +9,14 @@ namespace SocialMediaGatheringTool
 {
 	public class CompanyObservations
 	{
+		public enum RegressionTypes
+		{
+			Full,
+			Delta,
+			PercentChanged
+		};
+
+		const double AlmostZero = 0.000000001;
 		public int CompanyID { get; private set; }
 		List<Observation> m_observations;
 
@@ -59,7 +67,7 @@ namespace SocialMediaGatheringTool
 			for (int i = 0; i < m_observations.Count - lag; i++)
 			{
 				dblMtrx[i, 0] = m_observations[i].KloutScore;
-				dblMtrx[i, 1] = m_observations[i].NumberFollowers;
+				dblMtrx[i, 1] = m_observations[i].NumberFollowers != 0 ? m_observations[i].NumberFollowers : AlmostZero;
 				dblMtrx[i, 2] = m_observations[i].StockPrice;
 			}
 
@@ -74,9 +82,9 @@ namespace SocialMediaGatheringTool
 			for (int i = 0; i < m_observations.Count - lag; i++)
 			{
 				dblMtrx[i, 0] = m_observations[i].KloutScore;
-				dblMtrx[i, 1] = m_observations[i].NumberFavorites;
-				dblMtrx[i, 2] = m_observations[i].NumberFriends;
-				dblMtrx[i, 3] = m_observations[i].NumberStatuses;
+				dblMtrx[i, 1] = m_observations[i].NumberFavorites != 0 ? m_observations[i].NumberFavorites : AlmostZero;
+				dblMtrx[i, 2] = m_observations[i].NumberFriends != 0 ? m_observations[i].NumberFriends : AlmostZero;
+				dblMtrx[i, 3] = m_observations[i].NumberStatuses != 0 ? m_observations[i].NumberStatuses : AlmostZero;
 				dblMtrx[i, 4] = m_observations[i].StockPrice;
 			}
 
