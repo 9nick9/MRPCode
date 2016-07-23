@@ -1,4 +1,6 @@
 ﻿using Bing;
+using CenterSpace.NMath.Core;
+using CenterSpace.NMath.Stats;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -46,13 +48,80 @@ namespace SocialMediaGatheringTool
 				case "LoadDaily":
 					LoadDailyData(args[1], args[2], args[3], args[4], args[5], args[6]);
 					break;
+				case "CompanyRegression":
+					RegressEachCompany(args[1]);
+					break;
 				default:
 					Console.Out.WriteLine("Please enter a proper command");
 					return;
 			}
 		}
 
-		static void LoadDailyData(string connectionString, string kloutApiKey, string consumerKey, string consumerSecret, string accessToken, string accessTokenSecret)
+		//use centerspace
+		static void RegressEachCompany(string connectionString)
+		{
+			using (SqlConnection connection = new SqlConnection(connectionString))
+			{
+				connection.Open();
+				SqlCommand cmd = new SqlCommand();
+				cmd.Connection = connection;
+
+				string getAllData = $"select CompanyID, KloutScore, NumFavorites, NumFriends, NumStatuses, NumFollowers, Price from DataWithLags where CompanyID = 2 order by CompanyID, DateCollected";
+
+				cmd.CommandText = getAllData;
+				SqlDataReader reader = cmd.ExecuteReader();
+
+				
+				Dictionary<int, CompanyObservations> allObservations = new Dictionary<int, CompanyObservations>();
+
+				while(reader.Read())
+				{
+					int company = (int) reader["CompanyID"];
+					if (!allObservations.ContainsKey(company))
+						allObservations.Add(company, new CompanyObservations(company));
+
+					allObservations[company].AddObservation(new Observation(Convert.ToDouble(reader["KloutScore"]), Convert.ToInt32(reader["NumFavorites"]),
+						Convert.ToInt32(reader["NumStatuses"]), Convert.ToInt32(reader["NumFollowers"]), Convert.ToInt32(reader["NumFriends"]), Convert.ToDouble(reader["Price"])));
+				}
+				reader.Close();
+
+				foreach(KeyValuePair<int, CompanyObservations> kvp in allObservations)
+					PerformRegressions(kvp.Value, cmd);
+			}
+		}
+
+		static void PerformRegressions(CompanyObservations compObs, SqlCommand cmd)
+		{
+			for (int i = 1; i < 6; i++)
+				RegressAtLag(compObs, i, cmd);
+		}
+
+		static void RegressAtLag(CompanyObservations compObs, int lag, SqlCommand cmd)
+		{
+			DoubleVector prices = compObs.GetPrices(compObs.Length-lag);
+			DoubleVector laggedPrices = compObs.GetPrices(compObs.Length - lag, lag);
+
+			//Regress price & priceLag
+			LinearRegression priceRegression = new LinearRegression(new DoubleMatrix(laggedPrices), prices);
+			LinearRegressionAnova priceAnova = new LinearRegressionAnova(priceRegression);
+
+			DoubleMatrix companyGen = compObs.GetCompanyGenerated(lag);
+
+			//Regress Price and compLag
+			LinearRegression companyRegression = new LinearRegression(companyGen, prices);
+			LinearRegressionAnova companyAnova = new LinearRegressionAnova(companyRegression);
+
+			DoubleMatrix customerGen = compObs.GetCustomerGenerated(lag);
+
+			//Regress Price and cust lag
+			LinearRegression customerRegression = new LinearRegression(customerGen, prices);
+			LinearRegressionAnova customerAnova = new LinearRegressionAnova(customerRegression);
+
+			cmd.CommandText = $"Insert INTO RegressionResults VALUES ({compObs.CompanyID}, {lag}, {priceAnova.AdjustedRsquared}, {customerAnova.AdjustedRsquared}, {companyAnova.AdjustedRsquared})";
+			cmd.ExecuteNonQuery();
+		}
+
+		static void LoadDailyData(string connectionString, string kloutApiKey, string consumerKey, string consumerSecret, string accessToken, string accessTokenSecret, int startTwitterAt = 0)
 		{
 			int step = 0;
 			try
@@ -60,7 +129,7 @@ namespace SocialMediaGatheringTool
 				LoadKlout(connectionString, kloutApiKey);
 				step++;
 
-				LoadTwitterData(connectionString, consumerKey, consumerSecret, accessToken, accessTokenSecret);
+				LoadTwitterData(connectionString, consumerKey, consumerSecret, accessToken, accessTokenSecret, startTwitterAt);
 				step++;
 
 				int countLoaded = 0;
@@ -88,7 +157,7 @@ namespace SocialMediaGatheringTool
 
 		}
 
-		static void LoadTwitterData(string connectionString, string consumerKey, string consumerSecret, string accessToken, string accessTokenSecret)
+		static void LoadTwitterData(string connectionString, string consumerKey, string consumerSecret, string accessToken, string accessTokenSecret, int startAt = 0)
 		{
 			OAuthTokens tokens = new OAuthTokens();
 			tokens.ConsumerKey = consumerKey;
@@ -102,7 +171,7 @@ namespace SocialMediaGatheringTool
 				SqlCommand cmd = new SqlCommand();
 				cmd.Connection = connection;
 
-				string getTwitterNames = "SELECT ID, Twitter FROM Company where Twitter <> '' and Twitter is not null";
+				string getTwitterNames = $"SELECT ID, Twitter FROM Company where Twitter <> '' and Twitter is not null and ID > {startAt}";
 
 				cmd.CommandText = getTwitterNames;
 				SqlDataReader reader = cmd.ExecuteReader();

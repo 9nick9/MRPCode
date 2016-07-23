@@ -37,6 +37,18 @@
       <HintPath>..\packages\Newtonsoft.Json.8.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="NMath, Version=6.2.0.9, Culture=neutral, PublicKeyToken=873235918a322639, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\CenterSpace\NMath 6.2\Assemblies\NMath.dll</HintPath>
+    </Reference>
+    <Reference Include="NMathStats, Version=4.2.0.9, Culture=neutral, PublicKeyToken=873235918a322639, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\CenterSpace\NMath Stats 4.2\Assemblies\NMathStats.dll</HintPath>
+    </Reference>
+    <Reference Include="NMathStatsChartMicrosoft, Version=4.2.0.9, Culture=neutral, PublicKeyToken=873235918a322639, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\CenterSpace\NMath Stats 4.2\Assemblies\NMathStatsChartMicrosoft.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Data.Services" />
@@ -53,6 +65,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BingSearchContainer.cs" />
+    <Compile Include="CompanyObservations.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
